@@ -5,6 +5,7 @@ import axios from 'axios';
 export function activate(context: vscode.ExtensionContext) {
 	console.log('inline-completions demo started');
 	vscode.commands.registerCommand('demo-ext.command1', async (...args) => {
+		console.log('command1 called with args:', args);
 		vscode.window.showInformationMessage('command1: ' + JSON.stringify(args));
 	});
 
@@ -58,7 +59,8 @@ export function activate(context: vscode.ExtensionContext) {
 						: parseInt(end, 10);
 				const flags = matches[3];
 				const isSnippet = flags.includes('s');
-				const text = matches[4].replace(/\\n/g, '\n');
+				const text = serverResponse.item;
+				// const text = matches[4].replace(/\\n/g, '\n');
 
 				
 				result.items.push({

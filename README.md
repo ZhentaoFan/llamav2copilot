@@ -11,4 +11,9 @@ Document text sent by IDE received by server.
 ![Response From Server Received in IDE](image-1.png)
 
 ## Inline Completion in Copilot Style
-![Inline Completion in Copilot Style](image-2.png)
+![Inline Completion in Copilot Style](image.png)
+
+### Security & Warning: 
+We may need to sanitize the content sent to server to avoid injection.
+
+*e.g.* Prompt Injection, Code Injection, SQL injection, Command injection, Markdown injection.

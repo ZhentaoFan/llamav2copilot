@@ -4,22 +4,9 @@
 // Trigger inline completions in this line
 
 // [0,*):console.log(
-c
+    
+
 
 
 
 // [0,*):console.log("foo"
-console.log("foo"
-// [0,*):console.log({ label: "("
-console.log({ label: "("
-
-
-// [0,*):console.log(`${(1+2}`)
-
-
-// [0,*):({\n){
-
-// [33,33):lambda x: x.notnull()
-notNull = languages.apply();
-
-conso

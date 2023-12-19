@@ -7,7 +7,13 @@ app.use(bodyParser.json());
 
 app.post('/api', (req, res) => {
     console.log('Data received:', req.body.content);
-    res.send({ status: 'Received', item: "123456" });
+    res.send({ status: 'Received', item: `
+        html injection
+        <li>
+            <span>${req.body.content}</span>
+            <button class="delete">Delete</button>
+        </li>
+    `});
 });
 
 app.listen(port, () => {
