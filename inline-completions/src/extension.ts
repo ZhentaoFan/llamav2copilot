@@ -28,7 +28,9 @@ export function activate(context: vscode.ExtensionContext) {
             //     items: completionItems
             // };
 
+			// const regexp = /\/\/\s*Text/;
 			const regexp = /\/\/ \[(.+?),(.+?)\)(.*?):(.*)/;
+			// const regexp = /\/\/ Text/;
 			if (position.line <= 0) {
 				return;
 			}
@@ -57,14 +59,16 @@ export function activate(context: vscode.ExtensionContext) {
 					end === '*'
 						? document.lineAt(position.line).text.length
 						: parseInt(end, 10);
-				const flags = matches[3];
-				const isSnippet = flags.includes('s');
+				// const flags = matches[3];
+				// const isSnippet = flags.includes('s');
+				// console.log('isSnippet:', isSnippet);
+				// console.log('flags:', flags);
 				const text = serverResponse.item;
 				// const text = matches[4].replace(/\\n/g, '\n');
 
 				
 				result.items.push({
-					insertText: isSnippet ? new vscode.SnippetString(text) : text,
+					insertText: text,
 					range: new Range(position.line, startInt, position.line, endInt),
 					command:{
 						command: 'demo-ext.command1',
