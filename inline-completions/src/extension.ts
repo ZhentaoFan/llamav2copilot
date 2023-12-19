@@ -15,6 +15,7 @@ export function activate(context: vscode.ExtensionContext) {
 			// Send the entire document content to the server
 			const content = document.getText();
 			const serverResponse = await sendDataToServer(content);
+			console.log('serverResponse:', serverResponse.item);
             // const completionItems = serverResponse.map(item => {
             //     return {
             //         insertText: new vscode.SnippetString(item.text),
