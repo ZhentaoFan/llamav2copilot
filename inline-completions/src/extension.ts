@@ -22,7 +22,7 @@ export function activate(context: vscode.ExtensionContext) {
       console.log("provideInlineCompletionItems triggered");
 
       const prevLineText = document.lineAt(position.line - 1).text;
-      if (!prevLineText.trim().startsWith("//")) {
+      if (!(prevLineText.trim().startsWith("//") || prevLineText.trim().startsWith("#"))) {
         return;
       }
 
@@ -88,7 +88,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       const content = document.getText();
-      const serverResponse = await sendDataToServer(content);
+      const serverResponse = await sendDataToServer(content, position, prevLineText);
       lastSuggestion = serverResponse.item;
       lastValidInput = "";
       differenceCount = 0;
@@ -111,57 +111,16 @@ export function activate(context: vscode.ExtensionContext) {
   );
 }
 
-async function sendDataToServer(data: string) {
+async function sendDataToServer(content: string, cursorPosition: vscode.Position, instruction: string) {
   try {
     const response = await axios.post("http://localhost:3000/api", {
-      content: data,
-      cursorPosition: null,
-      intructions: null,
+      content: content,
+      cursorPosition: cursorPosition,
+      instruction: instruction,
     });
     return response.data;
   } catch (error) {
     console.error("Error sending data to server:", error);
     return null;
   }
-}
-
-async function provideInlineCompletionItems(
-  document: vscode.TextDocument,
-  position: vscode.Position,
-  context: vscode.InlineCompletionContext,
-  token: vscode.CancellationToken,
-) {
-  console.log("provideInlineCompletionItems triggered");
-
-  // Check if the previous line is a comment
-  const prevLineText = document.lineAt(position.line - 1).text;
-  if (!prevLineText.trim().startsWith("//")) {
-    return;
-  }
-
-  // Fetch the current line's text
-  const currentLineText = document.lineAt(position.line).text;
-
-  // If there's non-whitespace content on the current line, don't provide a suggestion
-  if (currentLineText.trim().length > 0) {
-    return;
-  }
-
-  // Fetch suggestion from the server
-  const content = document.getText();
-  const serverResponse = await sendDataToServer(content);
-  console.log("serverResponse:", serverResponse.item);
-
-  // Provide the suggestion at the cursor's current position
-  const range = new vscode.Range(position, position);
-  const text = serverResponse.item;
-
-  return {
-    items: [
-      {
-        insertText: text,
-        range: range,
-      },
-    ],
-  };
 }
