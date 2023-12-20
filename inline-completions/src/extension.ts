@@ -16,13 +16,102 @@ export function activate(context: vscode.ExtensionContext) {
   let lastSuggestion = "";
   let lastValidInput = "";
   let differenceCount = 0;
-  const maxDifferenceCount = 10;
+  const maxDifferenceCount = 4;
 
   const commentProvider: vscode.InlineCompletionItemProvider = {
     async provideInlineCompletionItems(document, position, context, token) {
-      console.log("Comment provideInlineCompletionItems triggered");
+      console.log("provideInlineCompletionItems triggered");
 
-      return provideInlineCompletionItems(document, position, true);
+      const prevLineText = document.lineAt(position.line - 1).text;
+      if (
+        !(
+          prevLineText.trim().startsWith("//") ||
+          prevLineText.trim().startsWith("#")
+        )
+      ) {
+        return;
+      }
+
+      // Get the current line's text, excluding leading spaces
+      const currentLineText = document.lineAt(position.line).text;
+      const trimmedCurrentLineText = currentLineText.trimStart();
+      const leadingSpacesCount =
+        currentLineText.length - trimmedCurrentLineText.length;
+
+      if (trimmedCurrentLineText.length !== 0) {
+        if (lastSuggestion.startsWith(trimmedCurrentLineText)) {
+          lastValidInput = trimmedCurrentLineText;
+          differenceCount = 0;
+          const remainingSuggestion = lastSuggestion.substring(
+            trimmedCurrentLineText.length,
+          );
+          const range = new vscode.Range(
+            position.line,
+            leadingSpacesCount + trimmedCurrentLineText.length,
+            position.line,
+            leadingSpacesCount + trimmedCurrentLineText.length,
+          );
+
+          return {
+            items: [
+              {
+                insertText: remainingSuggestion,
+                range: range,
+              },
+            ],
+          };
+        } else if (
+          lastValidInput &&
+          trimmedCurrentLineText.startsWith(lastValidInput) &&
+          differenceCount <= maxDifferenceCount
+        ) {
+          differenceCount =
+            trimmedCurrentLineText.length - lastValidInput.length;
+          const remainingSuggestion = lastSuggestion.substring(
+            lastValidInput.length,
+          );
+          const range = new vscode.Range(
+            position.line,
+            leadingSpacesCount + lastValidInput.length,
+            position.line,
+            leadingSpacesCount + lastValidInput.length,
+          );
+
+          return {
+            items: [
+              {
+                insertText: remainingSuggestion,
+                range: range,
+              },
+            ],
+          };
+        } else {
+          lastSuggestion = "";
+          lastValidInput = "";
+          differenceCount = 0;
+          return;
+        }
+      }
+
+      const content = document.getText();
+      const serverResponse = await sendCommentToServer(
+        content,
+        position,
+        prevLineText,
+      );
+      lastSuggestion = serverResponse.item;
+      lastValidInput = "";
+      differenceCount = 0;
+      const range = new vscode.Range(position, position);
+
+      return {
+        items: [
+          {
+            insertText: lastSuggestion,
+            range: range,
+          },
+        ],
+      };
     },
   };
 
@@ -30,7 +119,129 @@ export function activate(context: vscode.ExtensionContext) {
     async provideInlineCompletionItems(document, position, context, token) {
       console.log("Code provideInlineCompletionItems triggered");
 
-      return provideInlineCompletionItems(document, position, false);
+      const currentLineText = document.lineAt(position.line).text;
+      // avoid to trigger when the line is a comment
+      if (
+        currentLineText.trim().startsWith("//") ||
+        currentLineText.trim().startsWith("#")
+      ) {
+        return;
+      }
+      const prevLineText = document.lineAt(position.line - 1).text;
+      // avoid to trigger when the previous line is a comment
+      if (
+        prevLineText.trim().startsWith("//") ||
+        prevLineText.trim().startsWith("#")
+      ) {
+        return;
+      }
+      const trimmedCurrentLineText = currentLineText.trimStart();
+      const leadingSpacesCount =
+        currentLineText.length - trimmedCurrentLineText.length;
+
+      if (trimmedCurrentLineText.length !== 0) {
+        // if (lastSuggestion && trimmedCurrentLineText[0] === lastSuggestion[0]) {
+
+        if (lastSuggestion.startsWith(trimmedCurrentLineText)) {
+          lastValidInput = trimmedCurrentLineText;
+          differenceCount = 0;
+          const remainingSuggestion = lastSuggestion.substring(
+            trimmedCurrentLineText.length,
+          );
+          const range = new vscode.Range(
+            position.line,
+            leadingSpacesCount + trimmedCurrentLineText.length,
+            position.line,
+            leadingSpacesCount + trimmedCurrentLineText.length,
+          );
+
+          return {
+            items: [
+              {
+                insertText: remainingSuggestion,
+                range: range,
+              },
+            ],
+          };
+        } else if (
+          lastValidInput &&
+          trimmedCurrentLineText.startsWith(lastValidInput) &&
+          differenceCount <= maxDifferenceCount
+        ) {
+          differenceCount =
+            trimmedCurrentLineText.length - lastValidInput.length;
+          const remainingSuggestion = lastSuggestion.substring(
+            lastValidInput.length,
+          );
+          const range = new vscode.Range(
+            position.line,
+            leadingSpacesCount + lastValidInput.length,
+            position.line,
+            leadingSpacesCount + lastValidInput.length,
+          );
+
+          return {
+            items: [
+              {
+                insertText: remainingSuggestion,
+                range: range,
+              },
+            ],
+          };
+        } else {
+          if (differenceCount > maxDifferenceCount) {
+            lastSuggestion = "";
+            lastValidInput = "";
+            differenceCount = 0;
+
+            // Fetch new suggestion from the server
+            const serverResponse = await sendCodeToServer(
+              document.getText(),
+              position,
+              currentLineText,
+            );
+            if (serverResponse && serverResponse.item) {
+              lastSuggestion = serverResponse.item;
+              lastValidInput = trimmedCurrentLineText;
+              const range = new vscode.Range(position, position);
+
+              return {
+                items: [
+                  {
+                    insertText: lastSuggestion,
+                    range: range,
+                  },
+                ],
+              };
+            }
+          }
+          return;
+        }
+      }
+
+      const content = document.getText();
+      const serverResponse = await sendCodeToServer(
+        content,
+        position,
+        currentLineText,
+      );
+      if (!serverResponse || !serverResponse.item) {
+        return;
+      }
+
+      lastSuggestion = serverResponse.item;
+      lastValidInput = trimmedCurrentLineText;
+      differenceCount = 0;
+      const range = new vscode.Range(position, position);
+
+      return {
+        items: [
+          {
+            insertText: lastSuggestion,
+            range: range,
+          },
+        ],
+      };
     },
   };
 
@@ -40,7 +251,6 @@ export function activate(context: vscode.ExtensionContext) {
     isComment: boolean,
   ) {
     const currentLineText = document.lineAt(position.line).text;
-    const prevLineText = document.lineAt(position.line - 1).text;
     if (!isComment) {
       if (
         currentLineText.trim().startsWith("//") ||
@@ -48,6 +258,7 @@ export function activate(context: vscode.ExtensionContext) {
       ) {
         return;
       }
+      const prevLineText = document.lineAt(position.line - 1).text;
       if (
         prevLineText.trim().startsWith("//") ||
         prevLineText.trim().startsWith("#")
@@ -57,8 +268,8 @@ export function activate(context: vscode.ExtensionContext) {
     } else {
       if (
         !(
-          prevLineText.trim().startsWith("//") ||
-          prevLineText.trim().startsWith("#")
+          currentLineText.trim().startsWith("//") ||
+          currentLineText.trim().startsWith("#")
         )
       ) {
         return;
