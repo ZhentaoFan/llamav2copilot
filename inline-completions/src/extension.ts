@@ -16,13 +16,19 @@ export function activate(context: vscode.ExtensionContext) {
   let lastSuggestion = "";
   let lastValidInput = "";
   let differenceCount = 0;
+  const maxDifferenceCount = 10;
 
-  const provider: vscode.InlineCompletionItemProvider = {
+  const commentProvider: vscode.InlineCompletionItemProvider = {
     async provideInlineCompletionItems(document, position, context, token) {
       console.log("provideInlineCompletionItems triggered");
 
       const prevLineText = document.lineAt(position.line - 1).text;
-      if (!(prevLineText.trim().startsWith("//") || prevLineText.trim().startsWith("#"))) {
+      if (
+        !(
+          prevLineText.trim().startsWith("//") ||
+          prevLineText.trim().startsWith("#")
+        )
+      ) {
         return;
       }
 
@@ -57,7 +63,7 @@ export function activate(context: vscode.ExtensionContext) {
         } else if (
           lastValidInput &&
           trimmedCurrentLineText.startsWith(lastValidInput) &&
-          differenceCount <= 10
+          differenceCount <= maxDifferenceCount
         ) {
           differenceCount =
             trimmedCurrentLineText.length - lastValidInput.length;
@@ -88,7 +94,11 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       const content = document.getText();
-      const serverResponse = await sendDataToServer(content, position, prevLineText);
+      const serverResponse = await sendCommentToServer(
+        content,
+        position,
+        prevLineText,
+      );
       lastSuggestion = serverResponse.item;
       lastValidInput = "";
       differenceCount = 0;
@@ -105,18 +115,156 @@ export function activate(context: vscode.ExtensionContext) {
     },
   };
 
-  vscode.languages.registerInlineCompletionItemProvider(
-    { pattern: "**" },
-    provider,
+  const codeProvider: vscode.InlineCompletionItemProvider = {
+    async provideInlineCompletionItems(document, position, context, token) {
+      console.log("Code provideInlineCompletionItems triggered");
+
+      const currentLineText = document.lineAt(position.line).text;
+      if (
+        currentLineText.trim().startsWith("//") ||
+        currentLineText.trim().startsWith("#")
+      ) {
+        return;
+      }
+      const prevLineText = document.lineAt(position.line - 1).text;
+      if (
+        prevLineText.trim().startsWith("//") ||
+        prevLineText.trim().startsWith("#")
+      ) {
+        return;
+      }
+      const trimmedCurrentLineText = currentLineText.trimStart();
+      const leadingSpacesCount =
+        currentLineText.length - trimmedCurrentLineText.length;
+
+      if (trimmedCurrentLineText.length !== 0) {
+        if (lastSuggestion.startsWith(trimmedCurrentLineText)) {
+          lastValidInput = trimmedCurrentLineText;
+          differenceCount = 0;
+          const remainingSuggestion = lastSuggestion.substring(
+            trimmedCurrentLineText.length,
+          );
+          const range = new vscode.Range(
+            position.line,
+            leadingSpacesCount + trimmedCurrentLineText.length,
+            position.line,
+            leadingSpacesCount + trimmedCurrentLineText.length,
+          );
+
+          return {
+            items: [
+              {
+                insertText: remainingSuggestion,
+                range: range,
+              },
+            ],
+          };
+        } else if (
+          lastValidInput &&
+          trimmedCurrentLineText.startsWith(lastValidInput) &&
+          differenceCount <= maxDifferenceCount
+        ) {
+          differenceCount =
+            trimmedCurrentLineText.length - lastValidInput.length;
+          const remainingSuggestion = lastSuggestion.substring(
+            lastValidInput.length,
+          );
+          const range = new vscode.Range(
+            position.line,
+            leadingSpacesCount + lastValidInput.length,
+            position.line,
+            leadingSpacesCount + lastValidInput.length,
+          );
+
+          return {
+            items: [
+              {
+                insertText: remainingSuggestion,
+                range: range,
+              },
+            ],
+          };
+        } else {
+          if (differenceCount > maxDifferenceCount) {
+            lastSuggestion = "";
+            lastValidInput = "";
+            differenceCount = 0;
+          }
+          return;
+        }
+      }
+
+      const content = document.getText();
+      const serverResponse = await sendCodeToServer(
+        content,
+        position,
+        currentLineText,
+      );
+      if (!serverResponse || !serverResponse.item) {
+        return;
+      }
+
+      lastSuggestion = serverResponse.item;
+      lastValidInput = trimmedCurrentLineText;
+      differenceCount = 0;
+      const range = new vscode.Range(position, position);
+
+      return {
+        items: [
+          {
+            insertText: lastSuggestion,
+            range: range,
+          },
+        ],
+      };
+    },
+  };
+
+  // Register the comment inline completion provider
+  context.subscriptions.push(
+    vscode.languages.registerInlineCompletionItemProvider(
+      { pattern: "**" },
+      commentProvider,
+    ),
+  );
+
+  // Register the code inline completion provider
+  context.subscriptions.push(
+    vscode.languages.registerInlineCompletionItemProvider(
+      { pattern: "**" },
+      codeProvider,
+    ),
   );
 }
 
-async function sendDataToServer(content: string, cursorPosition: vscode.Position, instruction: string) {
+async function sendCommentToServer(
+  content: string,
+  cursorPosition: vscode.Position,
+  instruction: string,
+) {
   try {
-    const response = await axios.post("http://localhost:3000/api", {
+    const response = await axios.post("http://localhost:3000/api/comment", {
       content: content,
       cursorPosition: cursorPosition,
       instruction: instruction,
+    });
+    return response.data;
+  } catch (error) {
+    console.error("Error sending data to server:", error);
+    return null;
+  }
+}
+
+async function sendCodeToServer(
+  content: string,
+  cursorPosition: vscode.Position,
+  curLineCode: string,
+) {
+  try {
+    const response = await axios.post("http://localhost:3000/api/code", {
+      content: content,
+      cursorPosition: cursorPosition,
+      curLineCode: curLineCode,
     });
     return response.data;
   } catch (error) {
