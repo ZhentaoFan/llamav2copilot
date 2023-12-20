@@ -2,6 +2,10 @@ import * as vscode from 'vscode';
 import { Range } from 'vscode';
 import axios from 'axios';
 
+// 1. auto-compele (basic funcitonality)
+// 2. summarize the funciton (documentation), class generation
+// 3. optimization
+
 export function activate(context: vscode.ExtensionContext) {
 	console.log('inline-completions demo started');
 	vscode.commands.registerCommand('demo-ext.command1', async (...args) => {
@@ -9,87 +13,123 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.showInformationMessage('command1: ' + JSON.stringify(args));
 	});
 
+	let lastSuggestion = '';
+	let lastValidInput = '';
+	let differenceCount = 0;
+
 	const provider: vscode.InlineCompletionItemProvider = {
 		async provideInlineCompletionItems(document, position, context, token) {
 			console.log('provideInlineCompletionItems triggered');
 
-			// Send the entire document content to the server
-			const content = document.getText();
-			const serverResponse = await sendDataToServer(content);
-			console.log('serverResponse:', serverResponse.item);
-            // const completionItems = serverResponse.map(item => {
-            //     return {
-            //         insertText: new vscode.SnippetString(item.text),
-            //         range: new Range(position.line, item.start, position.line, item.end)
-            //     };
-            // });
-
-            // return {
-            //     items: completionItems
-            // };
-
-			// const regexp = /\/\/\s*Text/;
-			const regexp = /\/\/ \[(.+?),(.+?)\)(.*?):(.*)/;
-			// const regexp = /\/\/ Text/;
-			if (position.line <= 0) {
+			const prevLineText = document.lineAt(position.line - 1).text;
+			if (!prevLineText.trim().startsWith('//')) {
 				return;
 			}
 
-			const result: vscode.InlineCompletionList = {
-				items: [],
-			};
+			// Get the current line's text, excluding leading spaces
+			const currentLineText = document.lineAt(position.line).text;
+			const trimmedCurrentLineText = currentLineText.trimStart();
+			const leadingSpacesCount = currentLineText.length - trimmedCurrentLineText.length;
 
-			let offset = 1;
-			while (offset > 0) {
-				if (position.line - offset < 0) {
-					break;
+			if (trimmedCurrentLineText.length !== 0) {
+				if (lastSuggestion.startsWith(trimmedCurrentLineText)) {
+					lastValidInput = trimmedCurrentLineText;
+					differenceCount = 0;
+					const remainingSuggestion = lastSuggestion.substring(trimmedCurrentLineText.length);
+					const range = new vscode.Range(position.line, leadingSpacesCount + trimmedCurrentLineText.length, position.line, leadingSpacesCount + trimmedCurrentLineText.length);
+
+					return {
+						items: [{
+							insertText: remainingSuggestion,
+							range: range
+						}]
+					};
+				} else if (lastValidInput && trimmedCurrentLineText.startsWith(lastValidInput) && differenceCount <= 10) {
+					differenceCount = trimmedCurrentLineText.length - lastValidInput.length;
+					const remainingSuggestion = lastSuggestion.substring(lastValidInput.length);
+					const range = new vscode.Range(position.line, leadingSpacesCount + lastValidInput.length, position.line, leadingSpacesCount + lastValidInput.length);
+
+					return {
+						items: [{
+							insertText: remainingSuggestion,
+							range: range
+						}]
+					};
+				} else {
+					lastSuggestion = '';
+					lastValidInput = '';
+					differenceCount = 0;
+					return;
 				}
-				
-				const lineBefore = document.lineAt(position.line - offset).text;
-				const matches = lineBefore.match(regexp);
-				if (!matches) {
-					break;
-				}
-				offset++;
-
-				const start = matches[1];
-				const startInt = parseInt(start, 10);
-				const end = matches[2];
-				const endInt =
-					end === '*'
-						? document.lineAt(position.line).text.length
-						: parseInt(end, 10);
-				// const flags = matches[3];
-				// const isSnippet = flags.includes('s');
-				// console.log('isSnippet:', isSnippet);
-				// console.log('flags:', flags);
-				const text = serverResponse.item;
-				// const text = matches[4].replace(/\\n/g, '\n');
-
-				
-				result.items.push({
-					insertText: text,
-					range: new Range(position.line, startInt, position.line, endInt),
-					command:{
-						command: 'demo-ext.command1',
-						title: 'My Inline Completion Demo Command',
-						arguments: [1, 2],
-					}
-				});
 			}
-			return result;
-		},
+
+			const content = document.getText();
+			const serverResponse = await sendDataToServer(content);
+			lastSuggestion = serverResponse.item;
+			lastValidInput = '';
+			differenceCount = 0;
+			const range = new vscode.Range(position, position);
+
+			return {
+				items: [{
+					insertText: lastSuggestion,
+					range: range
+				}]
+			};
+		}
 	};
+
 	vscode.languages.registerInlineCompletionItemProvider({ pattern: '**' }, provider);
-}
+
+
+};
+
 
 
 async function sendDataToServer(data: string) {
     try {
-        const response = await axios.post('http://localhost:3000/api', { content: data });
+        const response = await axios.post('http://localhost:3000/api', { content: data, cursorPosition: null });
         return response.data;
     } catch (error) {
         console.error('Error sending data to server:', error);
         return null;
     }
+}
+
+async function provideInlineCompletionItems(
+	document: vscode.TextDocument, 
+    position: vscode.Position, 
+    context: vscode.InlineCompletionContext, 
+    token: vscode.CancellationToken) {
+	console.log('provideInlineCompletionItems triggered');
+
+	// Check if the previous line is a comment
+	const prevLineText = document.lineAt(position.line - 1).text;
+	if (!prevLineText.trim().startsWith('//')) {
+		return;
+	}
+
+	// Fetch the current line's text
+	const currentLineText = document.lineAt(position.line).text;
+
+	// If there's non-whitespace content on the current line, don't provide a suggestion
+	if (currentLineText.trim().length > 0) {
+		return;
+	}
+
+	// Fetch suggestion from the server
+	const content = document.getText();
+	const serverResponse = await sendDataToServer(content);
+	console.log('serverResponse:', serverResponse.item);
+
+	// Provide the suggestion at the cursor's current position
+	const range = new vscode.Range(position, position);
+	const text = serverResponse.item;
+
+	return {
+		items: [{
+			insertText: text,
+			range: range
+		}]
+	};
 }

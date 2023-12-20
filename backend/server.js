@@ -11,12 +11,12 @@ app.post('/api',
     // checkSanitization, 
     (req, res) => {
     console.log('Data received:', req.body.content);
-    res.send({ status: 'Received', item: `
-        html injection
-        <li>
-            <button class="delete">Delete</button>
-        </li>
-    `});
+    res.send({ status: 'Received', item: 
+`hello from server 1
+    hello from server 2
+
+hello from server 3`
+});
 });
 
 app.listen(port, () => {
