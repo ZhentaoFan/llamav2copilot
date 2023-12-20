@@ -1,6 +1,9 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const { sanitizeInput, checkSanitization } = require('./sanitizer/sanitizer-code-Llamav2');
+const OpenAI = require('openai');
+require('dotenv').config();
+const openai = new OpenAI(process.env.OPENAI_API_KEY);
 const app = express();
 const port = 3000;
 
@@ -44,6 +47,23 @@ app.post('/api/code',
 hello from server 3`
     });
 });
+
+
+// app.post('/api/comment', async (req, res) => {
+//     try {
+//         const completion = await openai.chat.completions.create({
+//             messages: [
+//                 { role: "user", content: req.body.instruction }
+//             ],
+//             model: "gpt-3.5-turbo",
+//         });
+
+//         res.send({ item: completion.choices[0].message.content });
+//     } catch (error) {
+//         console.error("Error in calling OpenAI:", error);
+//         res.status(500).send({ error: "Error generating response" });
+//     }
+// });
 
 app.listen(port, () => {
     console.log(`Server listening at http://localhost:${port}`);
