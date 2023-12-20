@@ -29,7 +29,9 @@
 		"lint": "eslint \"src/**/*.ts\"",
 		"watch": "tsc -watch -p ./",
 		"download-api": "dts dev",
-		"postinstall": "npm run download-api"
+		"postinstall": "npm run download-api",
+		"format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,json,css,md}\""
+		
 	},
 	"devDependencies": {
 		"@types/node": "^16.18.34",
@@ -38,6 +40,7 @@
 		"@typescript-eslint/parser": "^5.42.0",
 		"@vscode/dts": "^0.4.0",
 		"eslint": "^8.26.0",
+		"prettier": "^3.1.1",
 		"typescript": "^5.1.3"
 	},
 	"dependencies": {
