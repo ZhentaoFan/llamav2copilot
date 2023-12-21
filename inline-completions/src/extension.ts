@@ -188,8 +188,8 @@ export function activate(context: vscode.ExtensionContext) {
               },
             ],
           };
-        } else {
-          if (differenceCount > maxDifferenceCount) {
+        }
+        else {
             lastSuggestion = "";
             lastValidInput = "";
             differenceCount = 0;
@@ -214,8 +214,6 @@ export function activate(context: vscode.ExtensionContext) {
                 ],
               };
             }
-          }
-          return;
         }
       }
 
@@ -250,6 +248,9 @@ export function activate(context: vscode.ExtensionContext) {
     position: vscode.Position,
     isComment: boolean,
   ) {
+    // ... Common logic for providing inline completion items
+    // Use `isComment` to distinguish between comment and code logic
+
     const currentLineText = document.lineAt(position.line).text;
     if (!isComment) {
       if (
