@@ -7,8 +7,8 @@ import axios from "axios";
 // 3. optimization
 
 // Vision for our product:
-// - 1. basic functionality:
-//      - 1.1. User Friendly: No need to teach user
+// - 1. Basic functionality:
+//      - 1.1. User Friendly: Don't teach users
 //	  	- 1.2. Code Quality:
 //       	- 1.2.1. Extendibility: Functionality can be extended
 //      	- 1.2.1. Vulnerability: Design can be modulized for the convenience of adjustment and maintainance
@@ -17,11 +17,24 @@ import axios from "axios";
 //			- 1.3.2. Response:
 //          - 1.3.3. Server Load: (request rate, request size, response size.....)
 //      - 1.4. Security:
-//         - 1.4.1. Data Security: Context Injection/Indepedency.
+//         - 1.4.1. Data Security: Context Injection/User Indepedency.
 //         - 1.4.2. Server Security: Prompt Injection, DDOS
 //      - 1.5. Scalability:
-//      Notice: API and Prompt designs highly depend on the fine-tuning and LLM itself.
-// - 2. advanced functionality:
+//   Notice: API and Prompt designs highly depend on the fine-tuning and LLM itself.
+
+// - 2. Advanced functionality:
+//      - 2.1. Documentation
+//      - 2.2. Code Optimization
+//      - 2.3. Code Analysis
+
+// - 3. Ambitions:
+//      - 3.1. In-File Chatbot:
+//			- 3.1.1. In-File ChatWindow: integration of the chatbot and the code editor
+//      - 3.2. Code Bot:
+//			- 3.2.1. Interface with IDE
+//			- 3.2.2. Code Completion & Code Running Environment
+//			- 3.2.3. Code Begugging & Code Testing
+//          - 3.2.4. Code Analysis & Code Optimization
 
 export function activate(context: vscode.ExtensionContext) {
   console.log("inline-completions demo started");
@@ -33,13 +46,15 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   // Timmer code (This part is lost due to a bug of my laptop's Github Desktop )
+  // ToDo: ...
 
   // global variables for inline completion
   let lastSuggestion = "";
   let lastValidInput = "";
   let latestPos = 0;
   let differenceCount = 0;
-  const maxDifferenceCount = 2;
+  let inComment = 2; // 0: not in comment, 1: in comment, 2: unknown
+  const maxDifferenceCount = -1;
 
   const commentProvider: vscode.InlineCompletionItemProvider = {
     async provideInlineCompletionItems(document, position, context, token) {
@@ -54,6 +69,7 @@ export function activate(context: vscode.ExtensionContext) {
       ) {
         return;
       }
+      inComment = 1;
 
       // Get the current line's text, excluding leading spaces
       const currentLineText = document.lineAt(position.line).text;
@@ -61,18 +77,11 @@ export function activate(context: vscode.ExtensionContext) {
       const leadingSpacesCount =
         currentLineText.length - trimmedCurrentLineText.length;
 
-      const latest = findLatestValidInput(
-        trimmedCurrentLineText,
-        lastSuggestion,
-      );
-
       if (trimmedCurrentLineText.length !== 0) {
-        if (latest.text !== "") {
-          lastValidInput = latest.text;
-          latestPos = latest.pos;
-          differenceCount = 0;
+        if (lastSuggestion.startsWith(trimmedCurrentLineText)) {
+          lastValidInput = trimmedCurrentLineText;
           const remainingSuggestion = lastSuggestion.substring(
-            trimmedCurrentLineText.length - latestPos,
+            trimmedCurrentLineText.length,
           );
           const range = new vscode.Range(
             position.line,
@@ -89,9 +98,13 @@ export function activate(context: vscode.ExtensionContext) {
               },
             ],
           };
-        } else if (lastValidInput && differenceCount <= maxDifferenceCount) {
+        } else if (
+          lastValidInput &&
+          trimmedCurrentLineText.startsWith(lastValidInput) &&
+          differenceCount <= maxDifferenceCount
+        ) {
           differenceCount =
-            trimmedCurrentLineText.length - latestPos - lastValidInput.length;
+            trimmedCurrentLineText.length - lastValidInput.length;
           const remainingSuggestion = lastSuggestion.substring(
             lastValidInput.length,
           );
@@ -114,6 +127,7 @@ export function activate(context: vscode.ExtensionContext) {
           lastSuggestion = "";
           lastValidInput = "";
           differenceCount = 0;
+          inComment = 0;
           return;
         }
       }
@@ -157,7 +171,8 @@ export function activate(context: vscode.ExtensionContext) {
       if (
         (prevLineText.trim().startsWith("//") ||
           prevLineText.trim().startsWith("#")) &&
-        currentLineText.trim().length === 0
+        currentLineText.trim().length === 0 &&
+        inComment
       ) {
         return;
       }
@@ -169,6 +184,15 @@ export function activate(context: vscode.ExtensionContext) {
         trimmedCurrentLineText,
         lastSuggestion,
       );
+      console.log("latest.pos: " + latest.pos);
+      console.log("latestPos: " + latestPos);
+      if (latest.pos < latestPos) {
+        console.log("reset");
+        lastSuggestion = "";
+        lastValidInput = "";
+        differenceCount = 0;
+        latestPos = 0;
+      }
 
       if (trimmedCurrentLineText.length !== 0) {
         if (latest.text !== "") {
@@ -218,6 +242,7 @@ export function activate(context: vscode.ExtensionContext) {
           lastSuggestion = "";
           lastValidInput = "";
           differenceCount = 0;
+          latestPos = position.character;
           const serverResponse = await sendCodeToServer(
             document.getText(),
             position,
