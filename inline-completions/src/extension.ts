@@ -6,17 +6,40 @@ import axios from "axios";
 // 2. summarize the funciton (documentation), class generation
 // 3. optimization
 
+// Vision for our product:
+// - 1. basic functionality:
+//      - 1.1. User Friendly: No need to teach user
+//	  	- 1.2. Code Quality:
+//       	- 1.2.1. Extendibility: Functionality can be extended
+//      	- 1.2.1. Vulnerability: Design can be modulized for the convenience of adjustment and maintainance
+//      - 1.3. Performance:
+//          - 1.3.1. Time:
+//			- 1.3.2. Response:
+//          - 1.3.3. Server Load: (request rate, request size, response size.....)
+//      - 1.4. Security:
+//         - 1.4.1. Data Security: Context Injection/Indepedency.
+//         - 1.4.2. Server Security: Prompt Injection, DDOS
+//      - 1.5. Scalability:
+//      Notice: API and Prompt designs highly depend on the fine-tuning and LLM itself.
+// - 2. advanced functionality:
+
 export function activate(context: vscode.ExtensionContext) {
   console.log("inline-completions demo started");
+
+  // Commmand API demo
   vscode.commands.registerCommand("demo-ext.command1", async (...args) => {
     console.log("command1 called with args:", args);
     vscode.window.showInformationMessage("command1: " + JSON.stringify(args));
   });
 
+  // Timmer code (This part is lost due to a bug of my laptop's Github Desktop )
+
+  // global variables for inline completion
   let lastSuggestion = "";
   let lastValidInput = "";
+  let latestPos = 0;
   let differenceCount = 0;
-  const maxDifferenceCount = 4;
+  const maxDifferenceCount = 2;
 
   const commentProvider: vscode.InlineCompletionItemProvider = {
     async provideInlineCompletionItems(document, position, context, token) {
@@ -38,12 +61,18 @@ export function activate(context: vscode.ExtensionContext) {
       const leadingSpacesCount =
         currentLineText.length - trimmedCurrentLineText.length;
 
+      const latest = findLatestValidInput(
+        trimmedCurrentLineText,
+        lastSuggestion,
+      );
+
       if (trimmedCurrentLineText.length !== 0) {
-        if (lastSuggestion.startsWith(trimmedCurrentLineText)) {
-          lastValidInput = trimmedCurrentLineText;
+        if (latest.text !== "") {
+          lastValidInput = latest.text;
+          latestPos = latest.pos;
           differenceCount = 0;
           const remainingSuggestion = lastSuggestion.substring(
-            trimmedCurrentLineText.length,
+            trimmedCurrentLineText.length - latestPos,
           );
           const range = new vscode.Range(
             position.line,
@@ -60,13 +89,9 @@ export function activate(context: vscode.ExtensionContext) {
               },
             ],
           };
-        } else if (
-          lastValidInput &&
-          trimmedCurrentLineText.startsWith(lastValidInput) &&
-          differenceCount <= maxDifferenceCount
-        ) {
+        } else if (lastValidInput && differenceCount <= maxDifferenceCount) {
           differenceCount =
-            trimmedCurrentLineText.length - lastValidInput.length;
+            trimmedCurrentLineText.length - latestPos - lastValidInput.length;
           const remainingSuggestion = lastSuggestion.substring(
             lastValidInput.length,
           );
@@ -130,8 +155,9 @@ export function activate(context: vscode.ExtensionContext) {
       const prevLineText = document.lineAt(position.line - 1).text;
       // avoid to trigger when the previous line is a comment
       if (
-        prevLineText.trim().startsWith("//") ||
-        prevLineText.trim().startsWith("#")
+        (prevLineText.trim().startsWith("//") ||
+          prevLineText.trim().startsWith("#")) &&
+        currentLineText.trim().length === 0
       ) {
         return;
       }
@@ -139,14 +165,18 @@ export function activate(context: vscode.ExtensionContext) {
       const leadingSpacesCount =
         currentLineText.length - trimmedCurrentLineText.length;
 
-      if (trimmedCurrentLineText.length !== 0) {
-        // if (lastSuggestion && trimmedCurrentLineText[0] === lastSuggestion[0]) {
+      const latest = findLatestValidInput(
+        trimmedCurrentLineText,
+        lastSuggestion,
+      );
 
-        if (lastSuggestion.startsWith(trimmedCurrentLineText)) {
-          lastValidInput = trimmedCurrentLineText;
+      if (trimmedCurrentLineText.length !== 0) {
+        if (latest.text !== "") {
+          lastValidInput = latest.text;
           differenceCount = 0;
+          latestPos = latest.pos;
           const remainingSuggestion = lastSuggestion.substring(
-            trimmedCurrentLineText.length,
+            trimmedCurrentLineText.length - latestPos,
           );
           const range = new vscode.Range(
             position.line,
@@ -163,13 +193,9 @@ export function activate(context: vscode.ExtensionContext) {
               },
             ],
           };
-        } else if (
-          lastValidInput &&
-          trimmedCurrentLineText.startsWith(lastValidInput) &&
-          differenceCount <= maxDifferenceCount
-        ) {
+        } else if (lastValidInput && differenceCount <= maxDifferenceCount) {
           differenceCount =
-            trimmedCurrentLineText.length - lastValidInput.length;
+            trimmedCurrentLineText.length - latestPos - lastValidInput.length;
           const remainingSuggestion = lastSuggestion.substring(
             lastValidInput.length,
           );
@@ -188,32 +214,29 @@ export function activate(context: vscode.ExtensionContext) {
               },
             ],
           };
-        }
-        else {
-            lastSuggestion = "";
-            lastValidInput = "";
-            differenceCount = 0;
+        } else {
+          lastSuggestion = "";
+          lastValidInput = "";
+          differenceCount = 0;
+          const serverResponse = await sendCodeToServer(
+            document.getText(),
+            position,
+            currentLineText,
+          );
+          if (serverResponse && serverResponse.item) {
+            lastSuggestion = serverResponse.item;
+            lastValidInput = trimmedCurrentLineText;
+            const range = new vscode.Range(position, position);
 
-            // Fetch new suggestion from the server
-            const serverResponse = await sendCodeToServer(
-              document.getText(),
-              position,
-              currentLineText,
-            );
-            if (serverResponse && serverResponse.item) {
-              lastSuggestion = serverResponse.item;
-              lastValidInput = trimmedCurrentLineText;
-              const range = new vscode.Range(position, position);
-
-              return {
-                items: [
-                  {
-                    insertText: lastSuggestion,
-                    range: range,
-                  },
-                ],
-              };
-            }
+            return {
+              items: [
+                {
+                  insertText: lastSuggestion,
+                  range: range,
+                },
+              ],
+            };
+          }
         }
       }
 
@@ -242,134 +265,6 @@ export function activate(context: vscode.ExtensionContext) {
       };
     },
   };
-
-  async function provideInlineCompletionItems(
-    document: vscode.TextDocument,
-    position: vscode.Position,
-    isComment: boolean,
-  ) {
-    // ... Common logic for providing inline completion items
-    // Use `isComment` to distinguish between comment and code logic
-
-    const currentLineText = document.lineAt(position.line).text;
-    if (!isComment) {
-      if (
-        currentLineText.trim().startsWith("//") ||
-        currentLineText.trim().startsWith("#")
-      ) {
-        return;
-      }
-      const prevLineText = document.lineAt(position.line - 1).text;
-      if (
-        prevLineText.trim().startsWith("//") ||
-        prevLineText.trim().startsWith("#")
-      ) {
-        return;
-      }
-    } else {
-      if (
-        !(
-          currentLineText.trim().startsWith("//") ||
-          currentLineText.trim().startsWith("#")
-        )
-      ) {
-        return;
-      }
-    }
-    const trimmedCurrentLineText = currentLineText.trimStart();
-    const leadingSpacesCount =
-      currentLineText.length - trimmedCurrentLineText.length;
-
-    if (trimmedCurrentLineText.length !== 0) {
-      if (lastSuggestion.startsWith(trimmedCurrentLineText)) {
-        lastValidInput = trimmedCurrentLineText;
-        differenceCount = 0;
-        const remainingSuggestion = lastSuggestion.substring(
-          trimmedCurrentLineText.length,
-        );
-        const range = new vscode.Range(
-          position.line,
-          leadingSpacesCount + trimmedCurrentLineText.length,
-          position.line,
-          leadingSpacesCount + trimmedCurrentLineText.length,
-        );
-
-        return {
-          items: [
-            {
-              insertText: remainingSuggestion,
-              range: range,
-            },
-          ],
-        };
-      } else if (
-        lastValidInput &&
-        trimmedCurrentLineText.startsWith(lastValidInput) &&
-        differenceCount <= maxDifferenceCount
-      ) {
-        differenceCount = trimmedCurrentLineText.length - lastValidInput.length;
-        const remainingSuggestion = lastSuggestion.substring(
-          lastValidInput.length,
-        );
-        const range = new vscode.Range(
-          position.line,
-          leadingSpacesCount + lastValidInput.length,
-          position.line,
-          leadingSpacesCount + lastValidInput.length,
-        );
-
-        return {
-          items: [
-            {
-              insertText: remainingSuggestion,
-              range: range,
-            },
-          ],
-        };
-      } else {
-        if (differenceCount > maxDifferenceCount) {
-          lastSuggestion = "";
-          lastValidInput = "";
-          differenceCount = 0;
-        }
-        return;
-      }
-    }
-
-    const content = document.getText();
-    let serverResponse = null;
-    if (isComment) {
-      const prevLineText = document.lineAt(position.line - 1).text;
-      serverResponse = await sendCommentToServer(
-        content,
-        position,
-        prevLineText,
-      );
-    } else {
-      serverResponse = await sendCodeToServer(
-        content,
-        position,
-        currentLineText,
-      );
-    }
-    if (!serverResponse || !serverResponse.item) {
-      return;
-    }
-
-    lastSuggestion = serverResponse.item;
-    lastValidInput = trimmedCurrentLineText;
-    differenceCount = 0;
-    const range = new vscode.Range(position, position);
-
-    return {
-      items: [
-        {
-          insertText: lastSuggestion,
-          range: range,
-        },
-      ],
-    };
-  }
 
   // Register the comment inline completion provider
   context.subscriptions.push(
@@ -422,4 +317,22 @@ async function sendCodeToServer(
     console.error("Error sending data to server:", error);
     return null;
   }
+}
+
+function findLatestValidInput(
+  currentLineText: string,
+  lastSuggestions: string,
+) {
+  for (let i = 0; i < currentLineText.length; i++) {
+    if (
+      lastSuggestions.startsWith(
+        currentLineText.substring(i, currentLineText.length),
+      )
+    )
+      return {
+        text: currentLineText.substring(i, currentLineText.length),
+        pos: i,
+      };
+  }
+  return { text: "", pos: 0 };
 }
